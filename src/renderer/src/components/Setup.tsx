@@ -40,7 +40,7 @@ export default function Setup({ status, model, onModelChange, onStart }: Props) 
             <GemmaLogo className="mx-auto mb-5 h-20 w-20" />
             <h1 className="text-[22px] font-semibold tracking-tight">Setting things up</h1>
             <p className="mt-1.5 text-sm text-ink-400">
-              Everything runs locally. Nothing leaves your Mac.
+              Everything runs locally. Nothing leaves your machine.
             </p>
           </div>
 
@@ -104,7 +104,7 @@ function WelcomeScreen({
             <p className="mt-2 text-[13.5px] leading-relaxed text-ink-400">
               A local AI assistant, powered by Google's Gemma 4.
               <br />
-              Runs 100% on your Mac. No account, no cloud.
+              Runs 100% on your machine. No account, no cloud.
             </p>
           </div>
 
@@ -147,7 +147,7 @@ function WelcomeScreen({
             Download {selected.label} &nbsp;·&nbsp; {selected.size}
           </button>
           <p className="mt-3 text-center text-[11px] text-ink-400">
-            We'll install MLX runtime if needed. Model weights are cached locally.
+            We'll prepare the local runtime if needed. Model weights are cached locally.
           </p>
         </div>
       </div>
@@ -157,7 +157,7 @@ function WelcomeScreen({
 
 function StageList({ status }: { status: SetupStatus }) {
   const stages: Array<{ key: SetupStatus['stage']; label: string }> = [
-    { key: 'installing-mlx', label: 'Install MLX runtime' },
+    { key: 'installing-mlx', label: 'Prepare local runtime' },
     { key: 'starting-mlx', label: 'Start runtime & load model' },
     { key: 'downloading-model', label: 'Download model' },
     { key: 'ready', label: 'Ready to chat' }

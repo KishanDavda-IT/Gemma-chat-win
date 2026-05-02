@@ -7,7 +7,7 @@ import {
   installMLX,
   startServer,
   stopServer,
-  hasModel,
+  runtimeInstallHelp,
   chatStream,
   listLocalModels,
   type MLXChatMessage
@@ -86,9 +86,7 @@ let mlxPython: string | null = null
 async function ensureMLXRunning(model: string): Promise<string> {
   let mlx = locateMLX()
   if (!mlx) {
-    throw new Error(
-      'Python 3.10–3.13 not found. Install via Homebrew: brew install python@3.13'
-    )
+    throw new Error(runtimeInstallHelp())
   }
 
   let pythonToUse = mlx.python
@@ -96,7 +94,7 @@ async function ensureMLXRunning(model: string): Promise<string> {
   if (!mlx.installed) {
     send('setup:status', {
       stage: 'installing-mlx',
-      message: 'Installing MLX runtime…'
+      message: 'Preparing local runtime...'
     })
     // installMLX creates the venv and returns the venv python path
     pythonToUse = await installMLX((p) => {
@@ -110,7 +108,7 @@ async function ensureMLXRunning(model: string): Promise<string> {
   mlxPython = pythonToUse
 
   const label = AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? model
-  send('setup:status', { stage: 'starting-mlx', message: 'Starting model runtime…' })
+  send('setup:status', { stage: 'starting-mlx', message: 'Starting model runtime...' })
   send('setup:status', {
     stage: 'downloading-model',
     message: `Loading ${label}… (first run downloads the model)`
@@ -485,7 +483,7 @@ app.whenReady().then(async () => {
     try {
       await stopServer()
       if (!mlxPython) {
-        throw new Error('MLX Python path not available. Please restart the app.')
+        throw new Error('Local runtime path not available. Please restart the app.')
       }
       await startServer(mlxPython, model, (p) => {
         send('setup:status', {
@@ -556,7 +554,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'audio:transcribe',
     async (_e, { base64: _base64, model: _model }: { base64: string; model: string }) => {
-      // Audio transcription via MLX is not yet supported
+      // Audio transcription via the main-process model runtime is not yet supported.
       // Return empty text so the UI doesn't break
       return { text: '' }
     }
@@ -571,7 +569,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   // On macOS, keep the app alive in the dock so reopening is instant and the
-  // MLX subprocess + workspace server stay warm. Only non-darwin platforms
+  // Model subprocess + workspace server stay warm. Only non-darwin platforms
   // quit on last-window-close.
   if (process.platform !== 'darwin') {
     app.quit()

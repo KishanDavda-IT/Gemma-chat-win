@@ -11,6 +11,20 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+npmRebuild: false
+publish:
+  provider: generic
+  url: https://example.com/auto-updates
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+win:
+  target:
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  sign: false
+  signAndEditExecutable: false
+  verifyUpdateCodeSignature: false
 mac:
   icon: build/icon.icns
   target:
@@ -21,9 +35,3 @@ mac:
   gatekeeperAssess: false
 dmg:
   artifactName: ${name}-${version}.${ext}
-npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/

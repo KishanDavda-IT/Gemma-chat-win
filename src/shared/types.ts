@@ -78,7 +78,7 @@ export type StreamChunk =
   | { type: 'error'; error: string }
 
 export interface ModelInfo {
-  /** HuggingFace repo ID — used internally for mlx_lm */
+  /** Stable model key. The main process maps this to the active local runtime. */
   name: string
   /** Short, user-friendly display name */
   label: string
@@ -94,14 +94,14 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
     label: 'Gemma 4 E2B',
     size: '1.5 GB',
     sizeBytes: 1_500_000_000,
-    description: 'Edge-sized. Fast & lightweight. Text + image + audio. Runs on 8GB+ Macs.'
+    description: 'Edge-sized. Fast & lightweight. Text + image + audio. Runs on 8GB+ machines.'
   },
   {
     name: 'mlx-community/gemma-4-e4b-it-4bit',
     label: 'Gemma 4 E4B',
     size: '3 GB',
     sizeBytes: 3_000_000_000,
-    description: 'Best all-rounder. Text + image + audio. Runs on 8GB+ Macs.',
+    description: 'Best all-rounder. Text + image + audio. Runs on 8GB+ machines.',
     recommended: true
   },
   {

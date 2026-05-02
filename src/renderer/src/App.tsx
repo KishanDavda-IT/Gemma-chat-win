@@ -53,7 +53,7 @@ export default function App() {
         if (hasMLX) {
           setState({
             phase: 'setup',
-            status: { stage: 'starting-mlx', message: 'Starting model runtime…' },
+            status: { stage: 'starting-mlx', message: 'Starting model runtime...' },
             model: DEFAULT_MODEL
           })
           window.api.startSetup(DEFAULT_MODEL)
@@ -80,7 +80,7 @@ export default function App() {
         phase: 'switching',
         model: prev.model,
         toModel: newModel,
-        status: { stage: 'downloading-model', message: 'Switching model…' }
+        status: { stage: 'downloading-model', message: 'Switching model...' }
       }
     })
     window.api.switchModel(newModel)

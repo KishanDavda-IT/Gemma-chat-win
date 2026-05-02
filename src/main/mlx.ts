@@ -9,6 +9,34 @@ const MLX_URL = `http://${MLX_HOST}`
 
 let serverProc: ChildProcess | null = null
 let currentModel: string | null = null
+let cachedOllamaPath: string | null | undefined
+
+const OLLAMA_MODEL_BY_MLX_MODEL: Record<string, string> = {
+  'mlx-community/gemma-4-e2b-it-4bit': 'gemma3:1b',
+  'mlx-community/gemma-4-e4b-it-4bit': 'gemma3:4b',
+  'mlx-community/gemma-4-26b-a4b-it-4bit': 'gemma3:27b',
+  'mlx-community/gemma-4-31b-it-4bit': 'gemma3:27b'
+}
+
+function useMLXRuntime(): boolean {
+  return process.platform === 'darwin' && process.arch === 'arm64'
+}
+
+function runtimeModelName(model: string): string {
+  return useMLXRuntime() ? model : (OLLAMA_MODEL_BY_MLX_MODEL[model] ?? model)
+}
+
+export function runtimeInstallHelp(): string {
+  if (useMLXRuntime()) {
+    return 'Python 3.10-3.13 not found. Install via Homebrew: brew install python@3.13'
+  }
+
+  if (process.platform === 'win32') {
+    return 'Ollama is required on Windows. Install it from https://ollama.com/download/windows, then restart Gemma Chat.'
+  }
+
+  return 'Ollama is required on this platform. Install it from https://ollama.com/download, then restart Gemma Chat.'
+}
 
 // ---------------------------------------------------------------------------
 // Paths — everything lives under <appData>/mlx/
@@ -24,6 +52,9 @@ function venvDir(): string {
 
 /** The python binary inside our managed venv */
 function venvPython(): string {
+  if (process.platform === 'win32') {
+    return join(venvDir(), 'Scripts', 'python.exe')
+  }
   return join(venvDir(), 'bin', 'python3')
 }
 
@@ -96,6 +127,174 @@ function findSystemPython(): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Ollama detection (Windows / non-Apple-Silicon fallback)
+// ---------------------------------------------------------------------------
+
+function findOllama(): string | null {
+  if (cachedOllamaPath !== undefined) return cachedOllamaPath
+
+  const candidates = [
+    'ollama',
+    process.platform === 'win32'
+      ? join(process.env['LOCALAPPDATA'] ?? '', 'Programs', 'Ollama', 'ollama.exe')
+      : '',
+    process.platform === 'win32'
+      ? join(process.env['ProgramFiles'] ?? '', 'Ollama', 'ollama.exe')
+      : ''
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    try {
+      const check = spawnSync(candidate, ['--version'], {
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+      if (check.status === 0) {
+        cachedOllamaPath = candidate
+        console.log(`[ollama] Found Ollama: ${candidate}`)
+        return candidate
+      }
+    } catch {
+      // not available
+    }
+  }
+
+  cachedOllamaPath = null
+  return null
+}
+
+async function isOllamaHttpReady(): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 2500)
+  try {
+    const res = await fetch(`${MLX_URL}/api/version`, { signal: controller.signal })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function waitForOllamaHealth(timeoutMs: number): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (await isOllamaHttpReady()) return
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  throw new Error('Ollama did not start. Open Ollama manually, then try again.')
+}
+
+async function listOllamaModels(): Promise<string[]> {
+  try {
+    const res = await fetch(`${MLX_URL}/api/tags`)
+    if (!res.ok) return []
+    const data = (await res.json()) as { models?: Array<{ name: string }> }
+    const names = (data.models ?? []).map((m) => m.name)
+    const expanded = new Set(names)
+
+    for (const [mlxName, ollamaName] of Object.entries(OLLAMA_MODEL_BY_MLX_MODEL)) {
+      if (names.includes(ollamaName)) expanded.add(mlxName)
+    }
+
+    return [...expanded]
+  } catch {
+    return []
+  }
+}
+
+async function pullOllamaModel(
+  model: string,
+  onProgress?: (p: ServerProgress) => void
+): Promise<void> {
+  onProgress?.({ message: `Downloading ${model} with Ollama...`, progress: 0 })
+
+  const res = await fetch(`${MLX_URL}/api/pull`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: model, stream: true })
+  })
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Ollama model download failed: ${res.status} ${res.statusText} ${text}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let newline = buffer.indexOf('\n')
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim()
+      buffer = buffer.slice(newline + 1)
+      newline = buffer.indexOf('\n')
+      if (!line) continue
+
+      const evt = JSON.parse(line) as {
+        status?: string
+        completed?: number
+        total?: number
+        error?: string
+      }
+      if (evt.error) throw new Error(evt.error)
+
+      const progress =
+        evt.total && evt.completed != null ? Math.max(0, Math.min(1, evt.completed / evt.total)) : undefined
+      onProgress?.({ message: evt.status ?? `Downloading ${model}...`, progress })
+    }
+  }
+
+  if (buffer.trim()) {
+    const evt = JSON.parse(buffer.trim()) as { status?: string; error?: string }
+    if (evt.error) throw new Error(evt.error)
+    onProgress?.({ message: evt.status ?? `${model} is ready.`, progress: 1 })
+  }
+}
+
+async function startOllamaRuntime(
+  model: string,
+  onProgress?: (p: ServerProgress) => void
+): Promise<void> {
+  const ollama = findOllama()
+  if (!ollama) throw new Error(runtimeInstallHelp())
+
+  if (!(await isOllamaHttpReady())) {
+    onProgress?.({ message: 'Starting Ollama...', progress: 0 })
+    console.log(`[ollama] Starting server: ${ollama} serve`)
+
+    serverProc = spawn(ollama, ['serve'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false,
+      windowsHide: true
+    })
+
+    serverProc.stdout?.on('data', (d) => console.log('[ollama]', d.toString().trim()))
+    serverProc.stderr?.on('data', (d) => console.log('[ollama]', d.toString().trim()))
+    serverProc.on('exit', (code) => {
+      console.log('[ollama] server exited with code', code)
+      serverProc = null
+    })
+  }
+
+  await waitForOllamaHealth(30_000)
+
+  const localModels = await listOllamaModels()
+  if (!localModels.includes(model)) {
+    await pullOllamaModel(model, onProgress)
+  }
+
+  currentModel = model
+  onProgress?.({ message: 'Local runtime is ready.', progress: 1 })
+}
+
+// ---------------------------------------------------------------------------
 // MLX detection
 // ---------------------------------------------------------------------------
 
@@ -111,6 +310,11 @@ export interface MLXStatus {
  * Returns the python path to use and whether mlx_lm is installed.
  */
 export function locateMLX(): MLXStatus | null {
+  if (!useMLXRuntime()) {
+    const ollama = findOllama()
+    return ollama ? { python: ollama, installed: true } : null
+  }
+
   // 1. Check if we have a working venv with mlx_lm installed
   const vPy = venvPython()
   if (existsSync(vPy)) {
@@ -175,11 +379,16 @@ export type InstallProgress = {
 export async function installMLX(
   onProgress: (p: InstallProgress) => void
 ): Promise<string> {
+  if (!useMLXRuntime()) {
+    const ollama = findOllama()
+    if (!ollama) throw new Error(runtimeInstallHelp())
+    onProgress({ stage: 'install', message: 'Using Ollama local runtime...' })
+    return ollama
+  }
+
   const sysPython = findSystemPython()
   if (!sysPython) {
-    throw new Error(
-      'Python 3.10–3.13 not found. Please install Python via Homebrew: brew install python@3.13'
-    )
+    throw new Error(runtimeInstallHelp())
   }
 
   const vDir = venvDir()
@@ -271,6 +480,14 @@ export async function startServer(
   model: string,
   onProgress?: (p: ServerProgress) => void
 ): Promise<void> {
+  const runtimeModel = runtimeModelName(model)
+
+  if (!useMLXRuntime()) {
+    if (serverProc && !serverProc.killed && currentModel === runtimeModel) return
+    await startOllamaRuntime(runtimeModel, onProgress)
+    return
+  }
+
   if (serverProc && !serverProc.killed && currentModel === model) return
 
   // Kill existing server if running with different model
@@ -392,6 +609,8 @@ async function waitForHealth(
 // ---------------------------------------------------------------------------
 
 export async function listLocalModels(): Promise<string[]> {
+  if (!useMLXRuntime()) return listOllamaModels()
+
   try {
     const res = await fetch(`${MLX_URL}/v1/models`)
     if (!res.ok) return []
@@ -431,11 +650,13 @@ export interface MLXChatOptions {
 export async function* chatStream(
   opts: MLXChatOptions
 ): AsyncGenerator<{ content?: string; done?: boolean }> {
+  const model = runtimeModelName(opts.model)
+
   const res = await fetch(`${MLX_URL}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: opts.model,
+      model,
       messages: opts.messages.map((m) => ({
         role: m.role,
         content: m.content

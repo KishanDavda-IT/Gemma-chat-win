@@ -39,3 +39,9 @@ mlx-venv/
 
 # macOS iconset intermediates (the .icns is tracked)
 build/icon.iconset/
+
+# Local build artifacts
+.dist-build.pid
+GemmaChat-Latest.zip
+GemmaChat-Latest/
+.claude/

@@ -560,7 +560,7 @@ function EmptyState({ mode }: { mode: AgentMode }) {
         <div className="text-sm text-ink-400">
           {mode === 'code'
             ? 'Gemma will write files into a workspace and show a live preview on the right.'
-            : 'Running locally. Your messages never leave your Mac.'}
+            : 'Running locally. Your messages never leave your machine.'}
         </div>
       </div>
       <div className="anim-stagger grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
