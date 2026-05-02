@@ -104,7 +104,7 @@ In **Build Mode**, the app uses an XML-based tool protocol. As the model streams
 - **[Gemma](https://ai.google.dev/gemma)** by Google DeepMind
 - **[MLX](https://github.com/ml-explore/mlx)** by Apple Machine Learning Research
 - **[Ollama](https://ollama.com/)** for the Windows runtime
-- Created by **[@ammaar](https://x.com/ammaar)** and AI.
+
 
 ---
 
