@@ -57,8 +57,8 @@ Imagine building apps at 30,000 feet, in a remote cabin, or simply in a high-sec
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/ammaarreshi/gemma-chat.git
-   cd gemma-chat
+   git clone https://github.com/KishanDavda-IT/Gemma-chat-win.git
+   cd Gemma-chat-win
    ```
 
 2. **Install dependencies:**
